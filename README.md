@@ -28,9 +28,12 @@ This system encompasses several key phases, from raw data ingestion to interacti
     *   **Player Performance Forecasting:** LightGBM models predict a player's expected runs/wickets in upcoming matches based on historical data, Glicko ratings, and impact scores.
     *   **Match Outcome Prediction:** A LightGBM classification model predicts match winners based on aggregated team Glicko ratings, team form, and match context.
 
-6.  **Interactive Dashboard (Streamlit):**
-    *   A web-based dashboard for interactive exploration of player leaderboards, career trajectories, situational performance, and match predictions.
-    *   Allows filtering by season and player selection.
+6.  **RESTful API (FastAPI):**
+    *   A robust API built with FastAPI to expose player ratings, impact scores, and predictions, serving as the backend for any future frontend application.
+
+7.  **Explainability and Reporting:**
+    *   Utilizes SHAP (SHapley Additive exPlanations) to provide insights into model predictions and feature importance.
+    *   Generates text-based reports summarizing key player metrics and model explanations.
 
 ## Project Architecture
 
@@ -44,9 +47,8 @@ ipl-analytics/
 ├── 04_glicko_rating_system.py  # Implements Glicko-2 rating system
 ├── 05_player_impact_model.py   # Trains ML model for player impact
 ├── 06_predictive_analytics.py  # Trains models for player/match prediction
-├── 07_dashboard.py             # Streamlit interactive dashboard
-├── data/                       # (Optional) Directory for raw data if not downloaded by script
-├── models/                     # (Optional) Directory for saved models
+├── 08_api.py                   # FastAPI application for API endpoints
+├── 09_explainability_reporting.py # Generates model explanations and reports
 ├── .gitignore                  # Git ignore file
 ├── README.md                   # Project documentation
 ├── ipl_data_cleaned.csv        # Output of 02_data_cleaning.py
@@ -83,7 +85,7 @@ It's recommended to use a virtual environment.
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: .\venv\Scripts\activate
-pip install pandas numpy scikit-learn lightgbm streamlit plotly glicko2 joblib
+pip install pandas numpy scikit-learn lightgbm fastapi uvicorn[standard] shap joblib
 ```
 
 ### 3. Download the Dataset
@@ -126,22 +128,27 @@ Execute the Python scripts in the following order to generate the necessary data
     python 06_predictive_analytics.py
     ```
 
-### Running the Interactive Dashboard
+6.  **Explainability and Reporting:**
+    ```bash
+    python 09_explainability_reporting.py
+    ```
 
-After running all the above scripts, you can launch the Streamlit dashboard:
+### Running the RESTful API
+
+After running all the above scripts, you can launch the FastAPI application:
 
 ```bash
-streamlit run 07_dashboard.py
+uvicorn 08_api:app --reload --host 0.0.0.0 --port 8000
 ```
 
-This will open the dashboard in your web browser, typically at `http://localhost:8501`.
+Then, open your browser to `http://localhost:8000/docs` for the interactive API documentation (Swagger UI).
 
 ## Future Enhancements
 
-*   **RESTful API:** Implement a FastAPI/Flask API to serve player data, ratings, and predictions.
-*   **Advanced Frontend:** Develop a dedicated frontend using React/Angular/Vue.js for a highly customized UI/UX.
+*   **Dedicated Frontend:** Develop a dedicated frontend using React/Angular/Vue.js to consume the API and provide a rich, interactive user experience.
 *   **More Sophisticated Models:** Explore advanced ML techniques for player impact, win probability, and injury risk modeling.
 *   **Real-time Data Integration:** Integrate with live match data sources.
-*   **Deployment:** Deploy the API and dashboard to a cloud platform (e.g., AWS, GCP, Azure).
+*   **Deployment:** Deploy the API to a cloud platform (e.g., AWS, GCP, Azure).
+*   **Comprehensive Documentation:** Expand user and technical manuals.
 
 ---
