@@ -145,5 +145,3 @@ This will open the dashboard in your web browser, typically at `http://localhost
 *   **Deployment:** Deploy the API and dashboard to a cloud platform (e.g., AWS, GCP, Azure).
 
 ---
-
-*This README was generated with the assistance of a Gemini-powered AI agent.*
