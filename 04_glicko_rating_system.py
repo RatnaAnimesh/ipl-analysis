@@ -202,7 +202,8 @@ for match_id, match_df in ipl_df.groupby('match_id'):
 # I will remove the complex sigma update and use a fixed sigma for now.
 # And ensure separate batting/bowling ratings.
 
-# --- Simplified Glicko-2 Update (Fixed Sigma) ---
+# --- Glicko-2 Update and Context-Aware Performance Scoring ---
+
 def update_rating_simplified(player_rating, player_rd, opponent_data, sigma_fixed=SIGMA_DEFAULT):
     mu = (player_rating - RATING_DEFAULT) / RD_DEFAULT
     phi = player_rd / RD_DEFAULT
@@ -222,16 +223,63 @@ def update_rating_simplified(player_rating, player_rd, opponent_data, sigma_fixe
     v = 1 / v_sum if v_sum > 0 else 1 # Avoid division by zero
     delta = v * delta_sum
 
-    # New phi (rating deviation)
     new_phi = 1 / np.sqrt(1 / (phi**2 + sigma_fixed**2) + 1 / v)
-
-    # New mu (rating)
     new_mu = mu + new_phi * delta_sum
-
     new_rating = new_mu * RD_DEFAULT + RATING_DEFAULT
     new_rd = new_phi * RD_DEFAULT
 
     return new_rating, new_rd
+
+def calculate_batsman_performance_score(batter_df, bowling_ratings):
+    runs_scored = batter_df['batsman_runs'].sum()
+    balls_faced = len(batter_df)
+    if balls_faced == 0:
+        return 0.0
+
+    total_adjusted_runs = 0
+    for _, ball in batter_df.iterrows():
+        bowler = ball['bowler']
+        bowler_rating = bowling_ratings.get(bowler, {'mu': 1500})['mu']
+        runs_this_ball = ball['batsman_runs']
+        opponent_multiplier = max(0.5, bowler_rating / 1500.0)
+        total_adjusted_runs += (runs_this_ball * opponent_multiplier)
+
+    strike_rate = (runs_scored / balls_faced) * 100
+    base_score = (total_adjusted_runs / 40.0) * (strike_rate / 150.0)
+
+    is_not_out = batter_df['is_wicket'].sum() == 0
+    not_out_bonus = 0.15 if is_not_out and runs_scored > 20 else 0
+    
+    final_score = base_score + not_out_bonus
+    return max(0, min(1, final_score))
+
+def calculate_bowler_performance_score(bowler_df, batting_ratings):
+    runs_conceded = bowler_df['total_runs'].sum()
+    balls_bowled = len(bowler_df)
+    if balls_bowled == 0:
+        return 0.0
+
+    economy_rate = (runs_conceded / balls_bowled) * 6
+    base_economy_score = max(0, 1 - (economy_rate / 9.0))
+
+    total_wicket_value = 0
+    wickets_df = bowler_df[bowler_df['is_wicket'] == 1]
+    
+    for _, wicket in wickets_df.iterrows():
+        dismissed_batter = wicket['batter']
+        batter_rating = batting_ratings.get(dismissed_batter, {'mu': 1500})['mu']
+        
+        opponent_multiplier = max(0.5, batter_rating / 1500.0)
+        
+        over = wicket['over']
+        phase_multiplier = 1.0
+        if over >= 16: phase_multiplier = 1.25
+        elif over <= 6: phase_multiplier = 1.10
+        
+        total_wicket_value += (0.2 * opponent_multiplier * phase_multiplier)
+
+    final_score = (0.4 * base_economy_score) + (0.6 * total_wicket_value)
+    return max(0, min(1, final_score))
 
 # --- Initialize Player Ratings (Separate for Batting and Bowling) ---
 batting_ratings = {}
@@ -252,43 +300,30 @@ for match_id, match_df in ipl_df.groupby('match_id'):
     # --- Collect Batting Performance Data for Rating Update ---
     batting_match_data = {}
     for batter, batter_df in match_df.groupby('batter'):
-        runs_scored = batter_df['batsman_runs'].sum()
-        balls_faced = len(batter_df)
-        strike_rate = (runs_scored / balls_faced) * 100 if balls_faced > 0 else 0
-
-        outcome = 0.5 # Default to draw
-        if strike_rate > 150 and runs_scored > 20: outcome = 1 # Good performance (win)
-        elif strike_rate < 80 and balls_faced > 10: outcome = 0 # Poor performance (loss)
-
+        outcome = calculate_batsman_performance_score(batter_df, bowling_ratings)
+        
         opponent_data = []
         for bowler in batter_df['bowler'].unique():
-            if bowler in bowling_ratings: # Ensure bowler is initialized
+            if bowler in bowling_ratings:
                 opponent_data.append((
                     bowling_ratings[bowler]['mu'],
                     bowling_ratings[bowler]['phi'],
-                    outcome # Outcome for batter against this bowler
+                    outcome
                 ))
         if len(opponent_data) > 0: batting_match_data[batter] = opponent_data
 
     # --- Collect Bowling Performance Data for Rating Update ---
     bowling_match_data = {}
     for bowler, bowler_df in match_df.groupby('bowler'):
-        runs_conceded = bowler_df['total_runs'].sum()
-        balls_bowled = len(bowler_df)
-        economy = (runs_conceded / balls_bowled) * 6 if balls_bowled > 0 else 0
-        wickets_taken = bowler_df['is_wicket'].sum()
-
-        outcome = 0.5 # Default to draw
-        if economy < 6 and wickets_taken > 1: outcome = 1 # Good performance (win)
-        elif economy > 10 and balls_bowled > 10: outcome = 0 # Poor performance (loss)
+        outcome = calculate_bowler_performance_score(bowler_df, batting_ratings)
 
         opponent_data = []
         for batter in bowler_df['batter'].unique():
-            if batter in batting_ratings: # Ensure batter is initialized
+            if batter in batting_ratings:
                 opponent_data.append((
                     batting_ratings[batter]['mu'],
                     batting_ratings[batter]['phi'],
-                    outcome # Outcome for bowler against this batter
+                    outcome
                 ))
         if len(opponent_data) > 0: bowling_match_data[bowler] = opponent_data
 
